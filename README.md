@@ -268,7 +268,19 @@ Cloudflare KV 免费额度：读 10 万次/天，**写 1000 次/天**。
 
 个人使用完全不用担心超额。
 
-## 同步原始仓库更新
+## 同步更新
+
+### 更新 sub-store-workers（本项目）
+
+当本项目有新版本时，拉取最新代码并重新部署：
+
+```bash
+cd sub-store-workers
+git pull
+npm run deploy
+```
+
+### 更新 Sub-Store 原始仓库
 
 本项目不会自动同步 Sub-Store 原始仓库的更新。当原始仓库有新版本时，手动执行：
 
