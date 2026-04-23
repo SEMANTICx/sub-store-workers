@@ -85,7 +85,13 @@ export default {
                 }
                 if (pathname === backendPath) {
                     // 精确匹配前缀，重定向到带 / 的路径
-                    return Response.redirect(new URL(backendPath + '/', request.url).toString(), 302);
+                    return new Response(null, {
+                        status: 302,
+                        headers: {
+                            'Location': new URL(backendPath + '/', request.url).toString(),
+                            'Access-Control-Allow-Origin': '*',
+                        },
+                    });
                 }
                 if (pathname.startsWith(backendPath + '/')) {
                     // 带了前缀，剥离后交给路由
