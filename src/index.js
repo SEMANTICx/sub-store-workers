@@ -100,7 +100,7 @@ export default {
                     pathname = pathname.slice(backendPath.length);
                     const newUrl = new URL(request.url);
                     newUrl.pathname = pathname;
-                    // 注入 share 标记，让前端启用分享功能
+                    // 通过密码前缀访问才注入 share 标记（与上游 be_merge 行为一致）
                     if (pathname.startsWith('/api/')) {
                         newUrl.searchParams.set('share', 'true');
                     }

@@ -16,11 +16,11 @@ Sub-Store 后端的 Cloudflare Workers 移植版
 </a>
 <br><br>
 <a href="mydocs/codemap/project-overview.md">
-<img src="https://img.shields.io/badge/📐_Architecture-Project_Overview-blue?style=flat-square" alt="Project Overview">
+<img src="https://img.shields.io/badge/Architecture-Project_Overview-blue?style=flat-square" alt="Project Overview">
 </a>
 </p>
 
-> ⚠️ 一键部署按钮**仅供参考**，由于项目需要本地构建（esbuild + Sub-Store 源码），实际无法直接通过此按钮完成部署。请参照下方[手动部署步骤](#部署)。
+> **注意**：一键部署按钮**仅供参考**，由于项目需要本地构建（esbuild + Sub-Store 源码），实际无法直接通过此按钮完成部署。请参照下方[手动部署步骤](#部署)。
 
 ## 简介
 
@@ -134,7 +134,7 @@ npm run deploy:pages
 - **有自定义域名**：绑到 Workers 即可，不需要 Pages
 - **无自定义域名**：Pages 对外提供 API，Workers 在后台跑 Cron 定时同步（服务端执行，不受墙影响）
 
-> ⚠️ **自定义域名注意事项**：
+> **自定义域名注意事项**：
 > - SSL/TLS 加密模式必须设为 **Full**（Cloudflare Dashboard → 域名 → SSL/TLS → 概述）
 > - Cloudflare 免费 SSL 证书只覆盖**一级子域名**（`*.example.com`），不支持多级子域名（如 `a.b.example.com`）
 >   - 正确 `substore.example.com`
@@ -159,7 +159,7 @@ SUB_STORE_FRONTEND_BACKEND_PATH = "/你的密码"
 
 前端后端地址填：`https://xxx.pages.dev/你的密码`
 
-> ⚠️ `wrangler.toml` 的 `[vars]` 仅对 Workers 生效。**Pages 需要在 Dashboard 手动添加环境变量**：
+> **注意**：`wrangler.toml` 的 `[vars]` 仅对 Workers 生效。**Pages 需要在 Dashboard 手动添加环境变量**：
 
 **⑤ 进入 设置 → 变量和机密，点击 + 添加**
 
@@ -173,6 +173,8 @@ SUB_STORE_FRONTEND_BACKEND_PATH = "/你的密码"
 
 > 分享链接（download/preview）不受影响，无需密码即可访问。
 
+> **分享按钮**：订阅列表里的“分享”按钮仅在通过密码前缀访问时显示（与上游 Docker/Node 部署的 `be_merge` 行为一致），未配置密码前缀的部署不会显示分享按钮。
+
 ### 8. 推送通知（可选）
 
 支持 Bark、Pushover 等 HTTP URL 推送方式。在 `wrangler.toml` 中配置：
@@ -182,7 +184,7 @@ SUB_STORE_FRONTEND_BACKEND_PATH = "/你的密码"
 SUB_STORE_PUSH_SERVICE = "https://api.day.app/你的BarkKey/[推送标题]/[推送内容]"
 ```
 
-> ⚠️ Pages 同样需要在 Dashboard 手动添加 `SUB_STORE_PUSH_SERVICE` 环境变量。
+> **注意**：Pages 同样需要在 Dashboard 手动添加 `SUB_STORE_PUSH_SERVICE` 环境变量。
 
 > 不支持 shoutrrr（命令行工具）。
 
@@ -238,7 +240,7 @@ crons = ["55 15 * * *"]  # UTC 时间，+8 即北京时间
 | shoutrrr 推送 | 需要 `child_process` 执行命令行工具 |
 | 代理请求 | Workers 出站走 Cloudflare 网络，不支持自定义 HTTP/SOCKS5 代理 |
 
-## ⚠️ Workers 平台限制
+## Workers 平台限制
 
 | 限制 | 说明 |
 |---|---|
