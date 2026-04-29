@@ -1,0 +1,188 @@
+name: Sync Upstream Sub-Store
+
+on:
+  schedule:
+    # 每天 UTC 16:00 = 北京 00:00
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '强制部署（即使无更新）'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout sub-store-workers
+        uses: actions/checkout@v4
+        with:
+          path: sub-store-workers
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout Sub-Store (upstream)
+        uses: actions/checkout@v4
+        with:
+          repository: sub-store-org/Sub-Store
+          path: Sub-Store
+          fetch-depth: 1
+
+      - name: Get upstream version
+        id: upstream
+        working-directory: Sub-Store
+        run: |
+          SHA=$(git rev-parse HEAD)
+          VERSION=$(node -p "require('./backend/package.json').version")
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Upstream: $VERSION ($SHA)"
+
+      - name: Read last synced version
+        id: last
+        working-directory: sub-store-workers
+        run: |
+          if [ -f .upstream-sha ]; then
+            LAST=$(cat .upstream-sha)
+          else
+            LAST="none"
+          fi
+          echo "sha=$LAST" >> $GITHUB_OUTPUT
+          echo "Last synced: $LAST"
+
+      - name: Check if update needed
+        id: check
+        run: |
+          if [ "${{ steps.upstream.outputs.sha }}" = "${{ steps.last.outputs.sha }}" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "needed=false" >> $GITHUB_OUTPUT
+            echo "No update needed"
+          else
+            echo "needed=true" >> $GITHUB_OUTPUT
+            echo "Update needed"
+          fi
+
+      - name: Setup Node
+        if: steps.check.outputs.needed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sub-store-workers/package-lock.json
+
+      - name: Install upstream deps
+        if: steps.check.outputs.needed == 'true'
+        working-directory: Sub-Store/backend
+        run: npm install --no-audit --no-fund
+
+      - name: Run upstream tests
+        if: steps.check.outputs.needed == 'true'
+        working-directory: Sub-Store/backend
+        run: npm test
+
+      - name: Install workers deps
+        if: steps.check.outputs.needed == 'true'
+        working-directory: sub-store-workers
+        run: npm ci
+
+      - name: Build worker
+        if: steps.check.outputs.needed == 'true'
+        working-directory: sub-store-workers
+        run: npm run build
+
+      - name: Generate wrangler.toml
+        if: steps.check.outputs.needed == 'true'
+        working-directory: sub-store-workers
+        run: |
+          cat > wrangler.toml <<EOF
+          name = "sub-store-workers"
+          main = "dist/worker.js"
+          compatibility_date = "2024-09-23"
+          compatibility_flags = ["nodejs_compat"]
+
+          [[kv_namespaces]]
+          binding = "SUB_STORE_DATA"
+          id = "${{ secrets.KV_NAMESPACE_ID }}"
+
+          [triggers]
+          crons = ["55 15 * * *"]
+
+          [vars]
+          EOF
+
+      - name: Deploy Workers
+        if: steps.check.outputs.needed == 'true'
+        working-directory: sub-store-workers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy
+
+      - name: Prepare Pages bundle
+        if: steps.check.outputs.needed == 'true'
+        working-directory: sub-store-workers
+        run: |
+          mkdir -p pages-dist
+          cp dist/worker.js pages-dist/_worker.js
+
+      - name: Deploy Pages
+        if: steps.check.outputs.needed == 'true'
+        working-directory: sub-store-workers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler pages deploy pages-dist \
+            --project-name "${{ secrets.PAGES_PROJECT_NAME }}" \
+            --branch main \
+            --no-bundle \
+            --commit-message "upstream ${{ steps.upstream.outputs.version }}" \
+            --commit-dirty=true
+
+      - name: Health check
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          URL="https://sub-store-workers.${{ secrets.WORKERS_SUBDOMAIN }}.workers.dev"
+          for i in 1 2 3; do
+            sleep 10
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL/")
+            echo "Attempt $i: HTTP $CODE"
+            if [ "$CODE" = "200" ] || [ "$CODE" = "404" ]; then
+              echo "Worker is alive"
+              exit 0
+            fi
+          done
+          echo "Worker health check failed"
+          exit 1
+
+      - name: Update upstream-sha marker
+        if: steps.check.outputs.needed == 'true'
+        working-directory: sub-store-workers
+        run: |
+          echo "${{ steps.upstream.outputs.sha }}" > .upstream-sha
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .upstream-sha
+          git commit -m "chore: sync upstream to ${{ steps.upstream.outputs.version }} [skip ci]" || exit 0
+          git push
+
+      - name: Bark notify success
+        if: steps.check.outputs.needed == 'true' && success() && env.BARK_KEY != ''
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+        run: |
+          TITLE=$(printf 'Sub-Store %%E5%%B7%%B2%%E6%%9B%%B4%%E6%%96%%B0' | sed 's/%%/%/g')
+          curl -s "https://api.day.app/${BARK_KEY}/Sub-Store%20${{ steps.upstream.outputs.version }}/Workers%20%2B%20Pages%20deployed"
+
+      - name: Bark notify failure
+        if: failure() && env.BARK_KEY != ''
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+        run: |
+          curl -s "https://api.day.app/${BARK_KEY}/Sub-Store%20Sync%20Failed/Check%20GitHub%20Actions"
