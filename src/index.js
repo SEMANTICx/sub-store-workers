@@ -1,6 +1,8 @@
 /** Sub-Store Workers 入口 */
 
-import { version } from '../package.json';
+import { version as workersVersion } from '../package.json';
+import { version as substoreVersion } from '../../Sub-Store/backend/package.json';
+const version = `${substoreVersion}(w${workersVersion})`;
 import $ from '@/core/app';
 import express from '@/vendor/express';
 import migrate from '@/utils/migration';
